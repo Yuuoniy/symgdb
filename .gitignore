@@ -95,3 +95,6 @@ gdb/
 *.tar.gz
 *.gdb_history
 peda-session-*
+capstone-4.0.2/
+boost_1_75_0/
+

@@ -3,6 +3,7 @@ import re
 import sys
 import click
 import struct
+import pdb
 from termcolor import colored, cprint
 from triton import *
 # Import module from current directory
@@ -15,7 +16,7 @@ astCtxt = TritonContext.getAstContext()
 
 
 def parse_arg(arg):
-    return map(lambda x: x.encode("ascii"), arg.split())
+    return list(map(lambda x: x.encode("ascii"), arg.split()))
 
 
 class Arch(Singleton, object):
@@ -86,6 +87,7 @@ class GdbUtil(Singleton, object):
         regs = {}
         for line in out.splitlines():
             reg, reg_val = line.split()[0:2]
+            reg = str(reg,encoding='utf-8')
             regs[reg] = int(reg_val, 0)
         return regs
 
@@ -148,8 +150,8 @@ class GdbUtil(Singleton, object):
         Returns:
             - list of memory content
         """
-        return map(ord, list(gdb.selected_inferior().read_memory(
-            address, size)))
+        return list(map(ord, list(gdb.selected_inferior().read_memory(
+            address, size))))
 
     def get_reg(self, reg):
         """
@@ -215,7 +217,7 @@ class Symbolic(Singleton, object):
         if (self._initialized):
             return
         self._initialized = True
-        self.debug = False
+        self.debug = True
         self.symbolized_argc = False
         self.symbolized_argv = False
         self.symbolized_memory = []
@@ -263,7 +265,7 @@ class Symbolic(Singleton, object):
                     cprint('Got answer!!!', 'green')
                     for sym_id, sym_model in model.items():
                         value = sym_model.getValue()
-                        TritonContext.setConcreteSymbolicVariableValue(
+                        TritonContext.setConcreteVariableValue(
                             TritonContext.getSymbolicVariableFromId(sym_id),
                             value)
                         cprint('Symbolic variable %02d = %02x (%c)' %
@@ -272,7 +274,7 @@ class Symbolic(Singleton, object):
                         self.inject_to_gdb()
                     return True
             # Next
-            pc = TritonContext.buildSymbolicRegister(
+            pc = TritonContext.getRegisterAst(
                 Arch().triton_pc_reg).evaluate()
 
     def inject_to_gdb(self):
@@ -306,8 +308,8 @@ class Symbolic(Singleton, object):
         TritonContext.setArchitecture(Arch().triton_arch)
 
     def optimization(self):
-        TritonContext.enableMode(MODE.ALIGNED_MEMORY, True)
-        TritonContext.enableMode(MODE.ONLY_ON_SYMBOLIZED, True)
+        TritonContext.setMode(MODE.ALIGNED_MEMORY, True)
+        TritonContext.setMode(MODE.ONLY_ON_SYMBOLIZED, True)
 
     def load_segment(self, start, end):
         size = end - start
@@ -323,14 +325,15 @@ class Symbolic(Singleton, object):
             size = phdr.physical_size
             vaddr = phdr.virtual_address
             self.log('[+] Loading 0x%06x - 0x%06x' % (vaddr, vaddr + size))
-            TritonContext.setConcreteMemoryAreaValue(vaddr, phdr.content)
+            TritonContext.setConcreteMemoryAreaValue(vaddr, bytes(phdr.content))
 
     def set_regs(self):
         self.registers = GdbUtil().get_regs()
-        for reg, reg_val in self.registers.iteritems():
+        for reg, reg_val in self.registers.items():
             self.log("Set %s: %s" % (str(reg), str(hex(reg_val))))
             TritonContext.setConcreteRegisterValue(
                 getattr(TritonContext.registers, reg), reg_val)
+        print("after set regs")
 
     def symbolize_argv(self):
         argv_list = GdbUtil().get_argv_list()
@@ -371,7 +374,7 @@ class Symbolic(Singleton, object):
         self.load_binary()
         self.set_regs()
         self.load_stack()
-
+        # pdb.set_trace()
         # make Symbolic
 
         if self.symbolized_argv:
